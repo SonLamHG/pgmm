@@ -1,0 +1,15 @@
+{
+  "id": "snlmhong/pgmm-chainprobe",
+  "title": "pgmm-chainprobe",
+  "code_file": "chainprobe.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "dataset_sources": ["snlmhong/pgmm-ckpt"],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}
