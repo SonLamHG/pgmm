@@ -101,9 +101,19 @@ This matters because D9's split reads the signer field out of the filename; a
 wrong convention would have produced a split that was not the one we documented,
 silently.
 
-**Still to confirm on first use:** that the archive holds exactly 3200 clips and
-that the field ranges are 1–64 / 1–10 / 1–5. Cheap to assert in the preprocessing
-run; `prepare_dataset` already fails fast on any name that does not parse.
+**Fully confirmed** on 2026-07-17 by enumerating every file in
+`justinvo277/lsa64-dataset` through the Kaggle API (still no download):
+
+```
+mp4 files    : 3200      <- exactly the paper's count
+unparseable  : 0
+signs        : 1..64   | distinct 64
+signers      : 1..10   | distinct 10
+repetitions  : 1..5    | distinct 5
+```
+
+64 x 10 x 5 = 3200 closes it. The convention, the clip count, and every field
+range now match both the paper and `pgmm/data/lsa64_prepare.py`. D13 is settled.
 
 ## D14 — LSA64 raw vs cut
 
