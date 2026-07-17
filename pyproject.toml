@@ -1,0 +1,30 @@
+[project]
+name = "pgmm"
+version = "0.1.0"
+description = "Replication of Pose-Guided Fine-Grained Sign Language Video Generation (arXiv 2409.16709)"
+requires-python = ">=3.10"
+dependencies = [
+    "torch",
+    "torchvision",
+    "numpy",
+    "opencv-python-headless",
+    "scikit-image",
+    "lpips",
+    "pyyaml",
+    "imageio",
+    "imageio-ffmpeg",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["pgmm*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -2,10 +2,22 @@ __pycache__/
 *.pyc
 .venv/
 venv/
-data/
-checkpoints/
-log/
+*.egg-info/
+build/
+dist/
+
+# datasets and run outputs — root-level only.
+# A bare `data/` here would also match pgmm/data/ and silently drop the package
+# from the repo, breaking imports on Kaggle while passing locally.
+/data/
+/checkpoints/
+/log/
 *.pth
 *.tar
 *.mp4
+
+# vendored upstream demo assets: 32MB of GIFs with no role in training or
+# evaluation, re-cloned into every Kaggle session.
+third_party/tpsmm/assets/
+
 .DS_Store
