@@ -15,6 +15,7 @@ recorded here. A result that cannot be traced to a decision is not reportable.
 | D17 | TPSMM silently 80/20-splits when `train/` is absent, ignoring D9 | Materialise the split on disk (`pgmm/data/layout.py`) | resolved |
 | D18 | Paper's "five pairs per video" vs TPSMM's `num_repeats` 50–150 | `num_repeats: 5` — the semantics map exactly | resolved |
 | D19 | LSA64 signers wear fluorescent gloves; TPSMM defaults apply colour jitter | Keep jitter (D7 inheritance); revisit if M1 misses | decided |
+| D20 | How does the prepared data reach the training kernel? | `kernel_sources` mounts the preprocess kernel's auto-zipped output; extract in place. **Zero transfer.** | resolved |
 | D8 | FVD implementation sensitivity | Pin one I3D; report relative only | open |
 | D9 | LSA64 2800/400 split undefined | Seeded random default; signer-held-out alternative | open |
 | D10 | LPIPS backbone (alex vs vgg) undefined | `lpips` pkg, `net='alex'` | decided |
@@ -309,6 +310,40 @@ attacks exactly that signal. The paper says nothing either way.
 **Decision:** keep jitter, on D7 inheritance grounds. If M1 misses, this is a
 cheap thing to flip and worth trying early — but changing it without evidence
 would be tuning toward the paper's number, which this project does not do.
+
+## D20 — getting the prepared data to the training kernel
+
+**Resolution: `kernel_sources`. Nothing transfers through the workstation.**
+
+Kaggle bundles a notebook's output into a single `_output_.zip` on its own.
+`kernel_sources: ["snlmhong/pgmm-preprocess"]` mounts it in the training kernel:
+
+```
+/kaggle/input/notebooks/snlmhong/pgmm-preprocess/_output_.zip   1,343,316,532B
+```
+
+The training kernel extracts that once per session and trains. This supersedes
+D16's local round-trip for the *data*; D16's core requirement — that a kernel
+never needs credentials — still holds, and still governs checkpoints.
+
+### Two wrong conclusions on the way here, recorded so they are not re-derived
+
+**"`kernels output` is impossible for 264k files."** Wrong. It was called stuck
+after six minutes on the basis of `1 file, 0 bytes` on disk. That file was
+`_output_.zip` being written. It finished at **1.25 GiB in ~14 minutes**, and
+`zipfile.testzip()` reports no corruption: 268,034 entries, 264,831 JPEGs —
+exactly the count the kernel logged. The download works; it was judged too early.
+
+**"Kaggle's 500-file output cap silently dropped our data."** Wrong. The cap is
+real and widely reported ([1](https://www.kaggle.com/product-feedback/181143),
+[2](https://github.com/Kaggle/kaggle-api/issues/665)), but it does not bite here
+because Kaggle's auto-zip makes the output *one file*. Nothing was dropped —
+all 264,831 frames survived. A manual tarball was added to "fix" this and then
+removed as redundant.
+
+Both errors shared a cause: concluding from an intermediate observation instead
+of waiting for the operation to finish. On this platform, measuring is cheap and
+inference is unreliable — but a measurement read halfway is just inference.
 
 ## D12 — measured costs (partial)
 
