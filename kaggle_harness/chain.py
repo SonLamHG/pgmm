@@ -45,6 +45,16 @@ def push_checkpoint(
 ) -> list[str]:
     """Publish ``ckpt``'s directory as a new version of dataset ``slug``.
 
+    **This replaces the dataset's entire contents with the directory.** A new
+    version is not additive: anything upstream that is absent from ``folder``
+    is gone. So the caller must stage exactly what the next session needs to
+    resume — carrying an older checkpoint forward means copying it into this
+    directory first, and any unrelated file sitting here gets published too.
+
+    Requires ``KAGGLE_USERNAME`` and ``KAGGLE_KEY`` in the environment. A Kaggle
+    kernel has neither by default (D16); the caller reads the key from a Kaggle
+    Secret and sets them before calling.
+
     Returns the argv used, so callers (and tests) can see exactly what ran.
     """
     ckpt = Path(ckpt)
