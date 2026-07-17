@@ -43,8 +43,8 @@ Tolerance: ±5% relative on L1/LPIPS, ±0.005 absolute on SSIM. FVD exempt (orde
 | `pgmm/data/lsa64.py` | Split definition (D9) + frame loading |
 | `pgmm/train/state.py` | Checkpoint save/load: model, optim, sched, epoch/step, RNG |
 | `pgmm/eval/reconstruct.py` | Reconstruction protocol → frames → metric row |
-| `kaggle/chain.py` | Push/pull checkpoints as Kaggle Dataset versions |
-| `kaggle/train.ipynb` | Session entry point |
+| `kaggle_harness/chain.py` | Push/pull checkpoints as Kaggle Dataset versions |
+| `kaggle_harness/train.ipynb` | Session entry point |
 | `docs/decisions.md` | Numbered decision log |
 | `docs/results.md` | Our numbers vs the paper's, failures included |
 
@@ -1279,7 +1279,7 @@ git commit -m "test: add M0 resume-equivalence gate"
 ### Task 8: Kaggle checkpoint chaining
 
 **Files:**
-- Create: `kaggle/chain.py`
+- Create: `kaggle_harness/chain.py`
 - Test: `tests/test_chain.py`
 
 **Interfaces:**
@@ -1300,7 +1300,7 @@ import json
 
 import pytest
 
-from kaggle.chain import latest_checkpoint, push_checkpoint
+from kaggle_harness.chain import latest_checkpoint, push_checkpoint
 
 
 def _touch(path, step):
@@ -1361,17 +1361,21 @@ def test_push_checkpoint_rejects_missing_file(tmp_path):
 - [ ] **Step 2: Run to verify they fail**
 
 Run: `pytest tests/test_chain.py -v`
-Expected: all fail — `ModuleNotFoundError: No module named 'kaggle.chain'`
+Expected: all fail — `ModuleNotFoundError: No module named 'kaggle_harness.chain'`
 
-If the error is instead a name clash with the installed `kaggle` package, add
-`kaggle/__init__.py` and ensure the repo root precedes site-packages on
-`sys.path`; if the clash persists, rename the directory to `kaggle_harness/`
-and update the imports and this plan's paths consistently.
+**Resolved during execution:** the directory is `kaggle_harness/`, not `kaggle/`.
+The plan originally proposed `kaggle/` with a rename as a fallback if a clash
+appeared. The clash cannot appear locally — the `kaggle` package is not
+installed here — but it is guaranteed on Kaggle, where the official package
+ships with the image and a top-level `kaggle/` in the repo would shadow it,
+breaking the very API `push_checkpoint` shells out to. The rename was taken
+up-front rather than waiting for a failure that only manifests in the one
+environment where the code has to run.
 
 - [ ] **Step 3: Implement**
 
 ```python
-# kaggle/chain.py
+# kaggle_harness/chain.py
 """Carry a training run across Kaggle sessions.
 
 Kaggle caps a session at ~9h and wipes /kaggle/working between them, while a
@@ -1439,7 +1443,7 @@ Expected: 6 passed
 - [ ] **Step 5: Commit**
 
 ```bash
-git add kaggle/chain.py tests/test_chain.py
+git add kaggle_harness/chain.py tests/test_chain.py
 git commit -m "feat: add Kaggle checkpoint chaining across sessions"
 ```
 
@@ -1598,7 +1602,7 @@ git commit -m "feat: add reconstruction eval harness shared by baseline and PGMM
 ### Task 10: Kaggle notebook, published dataset, and measured step time (M0 exit)
 
 **Files:**
-- Create: `kaggle/train.ipynb`, `kaggle/README.md`
+- Create: `kaggle_harness/train.ipynb`, `kaggle_harness/README.md`
 - Modify: `docs/decisions.md`
 
 **Interfaces:**
@@ -1628,10 +1632,10 @@ kaggle datasets create -p . --dir-mode zip
 ```
 
 LSA64 is non-commercial with attribution required — **make the dataset private**
-and record the attribution in `kaggle/README.md`. Publishing it publicly would
+and record the attribution in `kaggle_harness/README.md`. Publishing it publicly would
 redistribute the authors' data under terms we were not granted.
 
-- [ ] **Step 2: Write `kaggle/train.ipynb`**
+- [ ] **Step 2: Write `kaggle_harness/train.ipynb`**
 
 A thin session driver — logic lives in the repo, not the notebook, so it stays
 testable. Cells:
@@ -1651,7 +1655,7 @@ for i in range(torch.cuda.device_count()):
 ```python
 # Cell 2 — resume from the newest checkpoint, if any
 from pathlib import Path
-from kaggle.chain import latest_checkpoint
+from kaggle_harness.chain import latest_checkpoint
 
 SEARCH = [Path("/kaggle/input/pgmm-ckpt"), Path("/kaggle/working/ckpt")]
 resume_from = latest_checkpoint(SEARCH)
@@ -1679,12 +1683,12 @@ relying on it; if the flag differs, use the real one rather than editing
 
 ```python
 # Cell 4 — publish the checkpoint before the session dies
-from kaggle.chain import push_checkpoint
+from kaggle_harness.chain import push_checkpoint
 ckpt = latest_checkpoint([Path("/kaggle/working/ckpt")])
 push_checkpoint(ckpt, slug="<user>/pgmm-ckpt", message=f"{ckpt.name}")
 ```
 
-Record in `kaggle/README.md`: the dataset slugs, that quota bills session
+Record in `kaggle_harness/README.md`: the dataset slugs, that quota bills session
 wall-clock (so both GPUs should always be used), and that the checkpoint push
 must be a separate cell so it can be run manually if training is interrupted.
 
@@ -1731,7 +1735,7 @@ The unit test in Task 7 proves the state logic; this proves the plumbing.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add kaggle/train.ipynb kaggle/README.md docs/decisions.md
+git add kaggle_harness/train.ipynb kaggle_harness/README.md docs/decisions.md
 git commit -m "feat: add Kaggle session driver; record measured step time (D12)"
 ```
 
