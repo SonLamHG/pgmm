@@ -20,6 +20,7 @@ recorded here. A result that cannot be traced to a decision is not reportable.
 | D13 | LSA64 filename convention unverified | `NNN_NNN_NNN.mp4` = sign_signer_repetition — **confirmed** against the real archive | resolved |
 | D14 | Paper does not say whether LSA64 raw or cut is used | Use **cut** (`justinvo277/lsa64-dataset`); retry raw if M1 misses | decided |
 | D15 | Kaggle legacy API key shadows OAuth and cannot push kernels | Disable `~/.kaggle/kaggle.json` so the CLI resolves to OAuth | decided |
+| D16 | A kernel has no Kaggle credentials, so it cannot push its own checkpoint | Unresolved — Secret with a legacy key, or kernel-output chaining | **open — blocks any long run** |
 
 ## D1 — which 36 keypoints
 
@@ -165,6 +166,106 @@ not viable. Native OAuth refreshes itself.
 mechanism behind checkpoint chaining. They must be confirmed to work under OAuth
 before any long training run is started — an auth failure at the *end* of a 9h
 session would lose the whole session's work.
+
+## D16 — how does a kernel push its own checkpoint back?
+
+Checkpoint chaining is a loop with two halves:
+
+1. **read** — the next session attaches the dataset and resumes from it
+2. **write** — the dying session publishes its checkpoint as a new version
+
+Half 2 is the problem. `kaggle_harness/chain.py` shells out to the `kaggle` CLI,
+but **a Kaggle kernel has no Kaggle credentials by default**. The CLI is
+installed; there is nothing for it to authenticate with. So `push_checkpoint`
+as written cannot run where it was designed to run.
+
+This blocks any run longer than one session — which is every real run.
+
+Measured by the chainprobe kernel (2026-07-17), inside a real kernel:
+
+```
+KAGGLE_USERNAME set: False
+KAGGLE_KEY set     : False
+~/.kaggle exists   : False
+```
+
+**Chosen: Kaggle Secret holding a legacy API key.** Rationale: legacy keys work
+for dataset operations (`datasets list`/`files` both succeeded under legacy) and
+fail only for *kernel* operations (D15). `datasets version` is a dataset
+operation, so a legacy key should suffice. The account already has two legacy
+keys (`d:\Admin\kaggle.json`, and the disabled `~/.kaggle/kaggle.json.legacy-disabled`).
+
+**Two things still unverified, both cheap to test and both fatal if wrong:**
+
+1. The `kaggle` PyPI package contains no reference to secrets at all — the API
+   cannot attach them. Secrets are UI-only. So whether a UI-attached secret
+   *survives an API kernel push* is unknown, and the whole workflow is
+   API-driven.
+2. Whether a legacy key actually authorises `datasets version` from inside a
+   kernel. Plausible, untested.
+
+Fallbacks if the secret route fails:
+
+- **Private dataset holding the key.** Proven to mount (chainprobe read a
+  private dataset successfully). Needs no UI step. Weaker than a Secret: the key
+  sits as a plain file rather than encrypted at rest.
+- **Local orchestration.** Drive the loop from the workstation: push kernel →
+  fetch its output → push checkpoint to the dataset → push next kernel. Needs no
+  kernel credentials at all, since `kernels output` and `datasets version` both
+  work locally under OAuth. Cost: every checkpoint round-trips through the
+  user's connection. A TPSMM checkpoint is estimated at 500MB–1GB (weights plus
+  two Adam moments) — unmeasured — so ~10 sessions means 10–20GB of traffic.
+
+**Must be settled before any long training run.** An auth failure at the *end*
+of a 9h session loses the entire session — the most expensive possible place to
+discover this.
+
+### Verified working (chainprobe, 2026-07-17)
+
+The read half of chaining is fully proven, including our own entry point:
+
+```
+PRIVATE DATASET MOUNTS AND READS -- chaining viable
+latest_checkpoint -> /kaggle/input/datasets/snlmhong/pgmm-ckpt/ckpt_step000042.pt
+CHAIN ENTRY POINT OK
+```
+
+Note the local API returns **403** on this account's own private dataset
+(`datasets files`, `datasets download`) while `datasets list --mine` sees it and
+`datasets version` writes to it. That 403 is an API-surface quirk and is
+**irrelevant to chaining**: kernels mount datasets rather than fetching them.
+Do not let it trigger a false alarm later.
+
+## D12 — measured costs (partial)
+
+First real measurements, from the CPU-only smoke kernel on 2026-07-17. CPU
+sessions do not consume the 30h/week GPU quota, so this cost nothing.
+
+| Quantity | Measured |
+|---|---|
+| Kaggle Python | 3.12.13 (local: 3.11.9) |
+| Kaggle torch | 2.10.0+cpu (local: 2.13.0+cpu) |
+| Decode + crop + resize | 0.70 s/clip single-process |
+| Full LSA64 preprocessing | ~37 min single-process |
+| Mean frames per clip | 71.2 |
+| Projected total frames | ~227,840 |
+
+The Python and torch versions differ from local, which is why the smoke kernel
+re-runs the whole test suite on Kaggle's image rather than trusting local green.
+All 49 passed there.
+
+**Still unmeasured: GPU step time** — the number the 8–12 week estimate actually
+rests on. Needs a GPU session and a working training loop.
+
+### LSA64 mount path (measured, not guessed)
+
+```
+/kaggle/input/datasets/justinvo277/lsa64-dataset/lsa64_dataset/LSA64/001/001_001_001.mp4
+```
+
+Note `/kaggle/input/datasets/<owner>/<slug>/...`, **not** the commonly documented
+`/kaggle/input/<slug>`. The first smoke run died on that assumption. Code should
+discover the mount by globbing rather than hardcoding either layout.
 
 ## D10 / D11 — metric implementations
 
