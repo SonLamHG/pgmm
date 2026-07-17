@@ -350,14 +350,20 @@ inference is unreliable — but a measurement read halfway is just inference.
 First real measurements, from the CPU-only smoke kernel on 2026-07-17. CPU
 sessions do not consume the 30h/week GPU quota, so this cost nothing.
 
-| Quantity | Measured |
-|---|---|
-| Kaggle Python | 3.12.13 (local: 3.11.9) |
-| Kaggle torch | 2.10.0+cpu (local: 2.13.0+cpu) |
-| Decode + crop + resize | 0.70 s/clip single-process |
-| Full LSA64 preprocessing | ~37 min single-process |
-| Mean frames per clip | 71.2 |
-| Projected total frames | ~227,840 |
+| Quantity | Projected (20-clip sample) | **Measured (full run)** |
+|---|---|---|
+| Kaggle Python | — | 3.12.13 (local: 3.11.9) |
+| Kaggle torch | — | 2.10.0+cpu (local: 2.13.0+cpu) |
+| Decode + crop + resize | 0.70 s/clip | **0.83–0.87 s/clip** |
+| Full LSA64 preprocessing | ~37 min | **44–46 min** (+ ~15 min for the split copy) |
+| Mean frames per clip | 71.2 | **82.8** (min 14, max 201) |
+| Total frames | ~227,840 | **264,831** |
+| Prepared size | — | **1.25 GiB**, 5.0 KiB/frame |
+| Split on disk | — | **2800 train / 400 test** — matches the paper |
+
+The 20-clip sample underestimated frame count by 16% and speed by ~20%. Good
+enough to plan with; not good enough to trust. Both runs of the preprocessing
+kernel agree with each other, which is the real check.
 
 The Python and torch versions differ from local, which is why the smoke kernel
 re-runs the whole test suite on Kaggle's image rather than trusting local green.
