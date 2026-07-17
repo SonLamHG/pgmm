@@ -8,7 +8,22 @@ Every deviation is traceable to a numbered decision in `docs/decisions.md`.
 
 ## Status
 
-Nothing measured yet. M0 (harness) in progress; M1 (baseline gate) not started.
+**Nothing measured yet.** No model has been trained and no number below is
+filled in. What exists is the harness that will produce them.
+
+M0 (harness): code complete and tested — metrics (L1/SSIM/LPIPS/TCD), LSA64
+preprocessing and split, resumable training state, Kaggle checkpoint chaining,
+and the shared eval harness. 49 tests pass from a clean clone.
+
+M0 blocked on two things that need a human:
+
+1. **LSA64 download** (D13) — the filename convention is assumed from the
+   dataset's docs and unverified against the real archive.
+2. **A Kaggle session** — to publish the prepared dataset, measure the real
+   step time (D12), and confirm resume works end-to-end on the platform rather
+   than only in unit tests.
+
+M1 (baseline gate): not started. Gated on M0.
 
 ## M1 — TPSMM baseline, LSA64 (gate)
 

@@ -65,7 +65,7 @@ is the first task of the next plan. See "Deferred to the next plan" below.
 - Consumes: nothing
 - Produces: importable `pgmm` package; `third_party/tpsmm` on `sys.path` for later tasks
 
-- [ ] **Step 1: Vendor TPSMM and record the exact upstream commit**
+- [x] **Step 1: Vendor TPSMM and record the exact upstream commit**
 
 Vendored as a plain directory rather than a submodule: later PGMM work must patch TPSMM's `model.py` to add `L_pd`/`L_align`, Kaggle clones are simpler without submodule recursion, and one clone contains everything.
 
@@ -89,7 +89,7 @@ Vendored: 2026-07-17
 
 Confirm `third_party/tpsmm/LICENSE` exists and is MIT. If absent, stop and resolve licensing before continuing.
 
-- [ ] **Step 2: Write `pyproject.toml`**
+- [x] **Step 2: Write `pyproject.toml`**
 
 ```toml
 [project]
@@ -114,7 +114,7 @@ testpaths = ["tests"]
 
 Torch is intentionally unpinned: Kaggle ships its own build and pinning fights the image. Record the resolved version at M0 Step (Task 10).
 
-- [ ] **Step 3: Seed the decision log**
+- [x] **Step 3: Seed the decision log**
 
 `docs/decisions.md` — carry D1–D8 over from the spec verbatim and add the three found while planning:
 
@@ -155,7 +155,7 @@ the third decimal — the precision at which we are claiming a match.
 Pinned as above; revisit only if M1 misses.
 ```
 
-- [ ] **Step 4: Write the import test**
+- [x] **Step 4: Write the import test**
 
 ```python
 # tests/test_imports.py
@@ -179,12 +179,12 @@ def test_vendored_tpsmm_present_with_license_and_pinned_commit():
     )
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `pytest tests/test_imports.py -v`
 Expected: 2 passed. If the sha assertion fails, the hash was invented — go back to Step 1 and paste the real one.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add pyproject.toml pgmm/ third_party/ docs/decisions.md docs/results.md tests/test_imports.py
@@ -207,7 +207,7 @@ Done before the data pipeline because TCD is the paper's novel contribution, is 
   - `class TCDVariant(str, Enum)` with members `UNIT_MEAN`, `UNIT_MAX`, `UNIT_SUM`, `BYTE_MEAN`
   - `tcd(generated: np.ndarray, target: np.ndarray, threshold: float = 0.5, variant: TCDVariant = TCDVariant.UNIT_MEAN) -> float` — both arrays `(N,H,W,C)` float in `[0,1]`, `N>=3`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_tcd.py
@@ -283,12 +283,12 @@ def test_rejects_out_of_range_values():
         tcd(generated, target)
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `pytest tests/test_tcd.py -v`
 Expected: all fail — `ModuleNotFoundError: No module named 'pgmm.metrics.tcd'`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 # pgmm/metrics/tcd.py
@@ -377,12 +377,12 @@ The final `.mean()` over an `(N-2, H, W)` boolean array equals the paper's
 `1/(N-2) * sum_t [ 1/(H*W) * sum_{h,w} ... ]` exactly, because every frame
 contributes the same pixel count.
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `pytest tests/test_tcd.py -v`
 Expected: 9 passed
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pgmm/metrics/tcd.py tests/test_tcd.py
@@ -406,7 +406,7 @@ git commit -m "feat: add TCD metric with candidate threshold readings (D3)"
 
   All take `(N,H,W,C)` float `[0,1]`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_basic_metrics.py
@@ -456,12 +456,12 @@ def test_metrics_reject_out_of_range(video):
             fn(bad, video)
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `pytest tests/test_basic_metrics.py -v`
 Expected: all fail — `ModuleNotFoundError: No module named 'pgmm.metrics.basic'`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 # pgmm/metrics/basic.py
@@ -532,12 +532,12 @@ def lpips(generated: np.ndarray, target: np.ndarray, device: str = "cpu") -> flo
     return float(distances.mean())
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `pytest tests/test_basic_metrics.py -v`
 Expected: 7 passed. First run downloads AlexNet LPIPS weights — needs network.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pgmm/metrics/basic.py tests/test_basic_metrics.py
@@ -560,7 +560,7 @@ git commit -m "feat: add L1/SSIM/LPIPS metrics with pinned implementations (D10,
   - `prepare_video(src: Path, dst_dir: Path, size: int = 128) -> int` writing `frame_%05d.jpg` and returning the frame count
   - `prepare_dataset(src_dir: Path, dst_dir: Path, size: int = 128) -> dict[str, int]` mapping clip id → frame count
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_lsa64_prepare.py
@@ -639,12 +639,12 @@ def test_prepare_dataset_indexes_all_clips(tmp_path):
     assert all(v == 4 for v in index.values())
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `pytest tests/test_lsa64_prepare.py -v`
 Expected: all fail — module not found
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 # pgmm/data/lsa64_prepare.py
@@ -732,7 +732,7 @@ def prepare_dataset(src_dir: Path, dst_dir: Path, size: int = 128) -> dict[str, 
     return index
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `pytest tests/test_lsa64_prepare.py -v`
 Expected: 5 passed
@@ -768,7 +768,7 @@ print('reps', min(reps), max(reps))          # expect 1 5
 Record the observed counts in `docs/decisions.md` under D9 — the split
 decision depends on this structure being what we think it is.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add pgmm/data/lsa64_prepare.py tests/test_lsa64_prepare.py docs/decisions.md
@@ -789,7 +789,7 @@ git commit -m "feat: add LSA64 frame pre-extraction with centre-crop to 128px"
   - `split_clips(clip_ids: list[str], mode: str = "random", seed: int = 0) -> tuple[list[str], list[str]]` returning `(train_ids, test_ids)`
   - `load_clip(prepared_dir: Path, clip_id: str) -> np.ndarray` returning `(N,H,W,C)` float32 in `[0,1]`, RGB
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_lsa64.py
@@ -864,12 +864,12 @@ def test_load_clip_missing_raises(tmp_path):
         load_clip(tmp_path, "999_999_999")
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `pytest tests/test_lsa64.py -v`
 Expected: all fail — module not found
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 # pgmm/data/lsa64.py
@@ -934,12 +934,12 @@ def load_clip(prepared_dir: Path, clip_id: str) -> np.ndarray:
     return np.stack(frames).astype(np.float32) / 255.0
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `pytest tests/test_lsa64.py -v`
 Expected: 7 passed
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pgmm/data/lsa64.py tests/test_lsa64.py
@@ -964,7 +964,7 @@ tested before anything depends on it.
   - `save_state(path: Path, *, model, optimizer, scheduler, epoch: int, step: int) -> None`
   - `load_state(path: Path, *, model, optimizer, scheduler) -> tuple[int, int]` returning `(epoch, step)` and restoring Python/NumPy/torch RNG state
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_state.py
@@ -1062,12 +1062,12 @@ def test_round_trip_restores_rng_streams(tmp_path):
     assert (random.random(), np.random.rand(), torch.rand(1).item()) == expected
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `pytest tests/test_state.py -v`
 Expected: all fail — module not found
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 # pgmm/train/state.py
@@ -1143,12 +1143,12 @@ def load_state(
     return payload["epoch"], payload["step"]
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `pytest tests/test_state.py -v`
 Expected: 5 passed
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pgmm/train/state.py tests/test_state.py
@@ -1166,7 +1166,7 @@ git commit -m "feat: add resumable training state with LR schedule and RNG resto
 - Consumes: `save_state`/`load_state` from Task 6
 - Produces: nothing importable — this is the executable form of the M0 gate
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 This is the spec's M0 exit criterion made mechanical: a resumed run must
 produce the identical loss curve to an uninterrupted one. It uses a tiny
@@ -1262,12 +1262,12 @@ def test_resume_without_rng_restore_would_diverge(tmp_path):
     assert first_half + second_half != uninterrupted
 ```
 
-- [ ] **Step 2: Run**
+- [x] **Step 2: Run**
 
 Run: `pytest tests/test_resume_equivalence.py -v`
 Expected: 2 passed. If the first test fails, `load_state` is losing state — fix Task 6 rather than relaxing the tolerance.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/test_resume_equivalence.py
@@ -1288,7 +1288,7 @@ git commit -m "test: add M0 resume-equivalence gate"
   - `latest_checkpoint(search_dirs: list[Path]) -> Path | None` — newest `ckpt_step*.pt` across attached dataset dirs and the working dir
   - `push_checkpoint(ckpt: Path, slug: str, message: str, dry_run: bool = False) -> list[str]` — returns the kaggle CLI argv it ran (or would run)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 The Kaggle API needs credentials and network, so `push_checkpoint` is tested
 by asserting the command it constructs, and the selection logic — the part
@@ -1358,7 +1358,7 @@ def test_push_checkpoint_rejects_missing_file(tmp_path):
                         dry_run=True)
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `pytest tests/test_chain.py -v`
 Expected: all fail — `ModuleNotFoundError: No module named 'kaggle_harness.chain'`
@@ -1372,7 +1372,7 @@ breaking the very API `push_checkpoint` shells out to. The rename was taken
 up-front rather than waiting for a failure that only manifests in the one
 environment where the code has to run.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 # kaggle_harness/chain.py
@@ -1435,12 +1435,12 @@ def push_checkpoint(
     return argv
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `pytest tests/test_chain.py -v`
 Expected: 6 passed
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add kaggle_harness/chain.py tests/test_chain.py
@@ -1462,7 +1462,7 @@ git commit -m "feat: add Kaggle checkpoint chaining across sessions"
 
   `reconstruct_fn(clip: np.ndarray) -> np.ndarray` maps a ground-truth clip to its reconstruction, same shape. Injected rather than hard-wired so the harness is testable without a GPU and reusable for both TPSMM and PGMM.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_reconstruct.py
@@ -1526,12 +1526,12 @@ def test_rejects_empty_clip_list(prepared):
         evaluate_clips(lambda c: c.copy(), prepared, [])
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `pytest tests/test_reconstruct.py -v`
 Expected: all fail — module not found
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 # pgmm/eval/reconstruct.py
@@ -1585,12 +1585,12 @@ def evaluate_clips(
     return {key: float(np.mean([r[key] for r in rows])) for key in rows[0]}
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `pytest tests/test_reconstruct.py -v`
 Expected: 6 passed
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pgmm/eval/reconstruct.py tests/test_reconstruct.py
