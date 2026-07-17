@@ -19,6 +19,7 @@ recorded here. A result that cannot be traced to a decision is not reportable.
 | D12 | Real step time / timeline unmeasured | Measure at M0, re-derive the estimate | open |
 | D13 | LSA64 filename convention unverified | `NNN_NNN_NNN.mp4` = sign_signer_repetition — **confirmed** against the real archive | resolved |
 | D14 | Paper does not say whether LSA64 raw or cut is used | Use **cut** (`justinvo277/lsa64-dataset`); retry raw if M1 misses | decided |
+| D15 | Kaggle legacy API key shadows OAuth and cannot push kernels | Disable `~/.kaggle/kaggle.json` so the CLI resolves to OAuth | decided |
 
 ## D1 — which 36 keypoints
 
@@ -133,6 +134,37 @@ our numbers come out *better* than the paper's, idle frames are a prime suspect.
 
 Both are third-party re-uploads rather than the authors' own distribution. Sizes
 match the official figures, which is reassuring but not proof of bit-identity.
+
+## D15 — Kaggle auth: legacy key vs OAuth
+
+Kaggle now has two auth schemes, and the CLI silently prefers the worse one.
+
+| `~/.kaggle/kaggle.json` present | `auth_method` | `datasets list/files` | `kernels push` |
+|---|---|---|---|
+| yes | `LEGACY_API_KEY` | works | **fails** |
+| no (OAuth only) | `OAUTH` | works | works |
+
+With the legacy key present, `kernels push` fails demanding a `KAGGLE_API_TOKEN`
+— even though `kaggle auth login` has already cached a valid OAuth token in
+`~/.kaggle/credentials.json`. The legacy key is not a fallback; it is an
+override that disables kernel operations entirely.
+
+**Decision:** `~/.kaggle/kaggle.json` renamed to `kaggle.json.legacy-disabled`
+(2026-07-17). Reversible by renaming back. A session backup also sits at
+`/tmp/kaggle.json.session-backup`, and the user keeps a separate legacy key at
+`d:\Admin\kaggle.json` — note that one carries a **different** key for the same
+account (`snlmhong`), so it is not a copy of the disabled file.
+
+**Why not just set `KAGGLE_API_TOKEN` from credentials.json?** That works, and
+was used for the first push, but it bypasses the refresh flow: the access token
+expires in ~3 hours. For a project measured in weeks, and for training runs that
+must survive unattended across session boundaries, an auth that dies mid-run is
+not viable. Native OAuth refreshes itself.
+
+**Consequence to watch:** `datasets create` / `datasets version` are the
+mechanism behind checkpoint chaining. They must be confirmed to work under OAuth
+before any long training run is started — an auth failure at the *end* of a 9h
+session would lose the whole session's work.
 
 ## D10 / D11 — metric implementations
 
