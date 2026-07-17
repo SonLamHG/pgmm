@@ -1,0 +1,15 @@
+{
+  "id": "snlmhong/pgmm-gpuprobe",
+  "title": "pgmm-gpuprobe",
+  "code_file": "gpuprobe.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": ["snlmhong/pgmm-preprocess"],
+  "model_sources": []
+}

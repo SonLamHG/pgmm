@@ -16,6 +16,7 @@ recorded here. A result that cannot be traced to a decision is not reportable.
 | D18 | Paper's "five pairs per video" vs TPSMM's `num_repeats` 50–150 | `num_repeats: 5` — the semantics map exactly | resolved |
 | D19 | LSA64 signers wear fluorescent gloves; TPSMM defaults apply colour jitter | Keep jitter (D7 inheritance); revisit if M1 misses | decided |
 | D20 | How does the prepared data reach the training kernel? | `kernel_sources` mounts the preprocess kernel's auto-zipped output; extract in place. **Zero transfer.** | resolved |
+| D21 | TPSMM's own checkpoint restores model/optimizer/LR but **not RNG** | Accept: resumes are correct but not bit-reproducible. M0's exit criterion revised. | decided |
 | D8 | FVD implementation sensitivity | Pin one I3D; report relative only | open |
 | D9 | LSA64 2800/400 split undefined | Seeded random default; signer-held-out alternative | open |
 | D10 | LPIPS backbone (alex vs vgg) undefined | `lpips` pkg, `net='alex'` | decided |
@@ -344,6 +345,51 @@ removed as redundant.
 Both errors shared a cause: concluding from an intermediate observation instead
 of waiting for the operation to finish. On this platform, measuring is cheap and
 inference is unreliable — but a measurement read halfway is just inference.
+
+## D21 — TPSMM resumes correctly but not reproducibly
+
+TPSMM does its own checkpointing, and we use it rather than ours. What
+`train.py` hands to `Logger.save_cpk`:
+
+```python
+model_save = {
+    'inpainting_network': ..., 'dense_motion_network': ...,
+    'kp_detector': ..., 'optimizer': ...,
+}
+# plus bg_predictor / optimizer_bg_predictor, plus epoch
+```
+
+and on resume `MultiStepLR(optimizer, milestones, gamma=0.1, last_epoch=start_epoch-1)`
+puts the LR schedule back where it was.
+
+So model, optimizer moments, epoch and LR position all survive — everything that
+governs correctness. **RNG state does not.** After a resume the data order and
+augmentation draws differ from an uninterrupted run.
+
+**The plan's M0 exit criterion — "a resumed run's loss curve matches an
+uninterrupted one" — is therefore unreachable with TPSMM's mechanism, and was
+written without knowing the mechanism.**
+
+**Revised M0 exit criterion:** a resume must restore weights, optimizer moments,
+epoch, and LR-schedule position, and the loss must continue from where it left
+off rather than jumping. Bit-identical continuation is *not* required: a
+different post-resume sample path is statistically equivalent training, not
+corrupted training. What would corrupt results is a reset LR schedule or lost
+optimizer moments, and those are restored.
+
+Not patching RNG persistence into the vendored tree: it would buy
+reproducibility we do not need, at the cost of touching frozen code.
+
+**Consequence:** `pgmm/train/state.py` and `tests/test_resume_equivalence.py`
+(plan Tasks 6–7) were built for a training loop we turn out not to own. They are
+correct and tested, but currently unused — TPSMM's loop uses TPSMM's Logger.
+Wasted effort, caused by planning the harness before reading the vendored
+training code. Kept for now in case PGMM's loop diverges; delete if M2 confirms
+it does not.
+
+Checkpoint cadence is per *epoch* (`log_epoch` fires `save_cpk` when
+`(epoch+1) % checkpoint_freq == 0`), not per step. At `checkpoint_freq: 5` and
+~500 steps/epoch, a dying session loses at most 5 epochs.
 
 ## D12 — measured costs (partial)
 
