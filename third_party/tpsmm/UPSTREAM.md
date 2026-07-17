@@ -17,6 +17,24 @@ in this directory. New code lives in `pgmm/`.
 
 ## Patch log
 
+Both patches are compatibility-only: TPSMM is from 2021 and two of its
+dependencies made breaking changes since. Neither touches training numerics.
+
+Verified together by running `run.py` end to end locally on CPU against a
+synthetic dataset — it trains, writes a checkpoint, and renders the keypoint
+visualisation (which is the `circle` code path). Do that before pushing to
+Kaggle: it catches this class of breakage in seconds instead of one 5–10 minute
+kernel cycle per error.
+
+### 2026-07-17 — `run.py`: `yaml.load` needs an explicit `Loader`
+
+**Numerics untouched.** PyYAML 6.0 made the `Loader` argument mandatory;
+`run.py:38` called `yaml.load(f)`, so every run died at config parsing with
+`TypeError: load() missing 1 required positional argument: 'Loader'`.
+
+Patched to `yaml.load(f, Loader=yaml.FullLoader)`. FullLoader parses these
+configs identically to the implicit loader it replaced.
+
 ### 2026-07-17 — `logger.py`: shim `skimage.draw.circle`
 
 **Numerics untouched.** scikit-image removed `draw.circle` in 0.19 (renamed to
