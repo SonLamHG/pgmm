@@ -21,7 +21,7 @@ recorded here. A result that cannot be traced to a decision is not reportable.
 | D9 | LSA64 2800/400 split undefined | Seeded random default; signer-held-out alternative | open |
 | D10 | LPIPS backbone (alex vs vgg) undefined | `lpips` pkg, `net='alex'` | decided |
 | D11 | SSIM implementation undefined | `skimage`, `data_range=1.0`, `channel_axis=-1` | decided |
-| D12 | Real step time / timeline unmeasured | Measure at M0, re-derive the estimate | open |
+| D12 | Real step time / timeline unmeasured | **Measured: 1.07 s/step → 15.5h/run, 93h for 6 runs, 3.1 weeks of quota** | resolved |
 | D13 | LSA64 filename convention unverified | `NNN_NNN_NNN.mp4` = sign_signer_repetition — **confirmed** against the real archive | resolved |
 | D14 | Paper does not say whether LSA64 raw or cut is used | Use **cut** (`justinvo277/lsa64-dataset`); retry raw if M1 misses | decided |
 | D15 | Kaggle auth: legacy key can't push kernels; OAuth expires in 3h and does **not** auto-refresh | Long-lived API token in `~/.kaggle/access_token` | **open — needs a one-time user action** |
@@ -487,8 +487,44 @@ The Python and torch versions differ from local, which is why the smoke kernel
 re-runs the whole test suite on Kaggle's image rather than trusting local green.
 All 49 passed there.
 
-**Still unmeasured: GPU step time** — the number the 8–12 week estimate actually
-rests on. Needs a GPU session and a working training loop.
+### GPU step time — MEASURED 2026-07-17
+
+One real epoch of the committed config on 2×T4, fp32, DataParallel:
+
+```
+1 epoch (500 steps)  : 8m53s   -> 1.07 s/step
+wall incl. startup   : 9.3 min -> 1.113 s/step
+```
+
+| Derived | Value |
+|---|---|
+| Full run (100 epochs, 50,000 steps) | **15.5 GPU-hours** |
+| Sessions per run (9h cap) | **1.7 — a run does NOT fit in one session** |
+| 6-run matrix | **93 hours** |
+| Weeks of 30h/week quota | **3.1** |
+
+**Verdict on the spec's estimate.** The spec guessed 10–20h per run and 8–12
+weeks overall. The per-run figure was accurate — 15.5h sits inside it. The
+8–12 weeks covered training *plus* debugging; pure training is 3.1 weeks, and
+the plan's stop-and-raise threshold (~8 weeks of quota) is not met, so this
+proceeds without escalation.
+
+My own counter-guess of "5–10h/run, so 1.5–2 weeks" was **wrong and optimistic** —
+the spec's unmeasured estimate beat it. D18 correctly cut the step count 30x, but
+I then assumed the remaining steps would be cheap; they cost ~1.07s each because
+TPSMM runs a VGG19 perceptual pyramid at four scales on top of dense motion.
+
+**Consequence: checkpoint chaining is unavoidable.** At 15.5h against a 9h cap,
+every run spans ~2 sessions. There is no configuration of the paper's protocol
+that fits one session, so D16's write-half — the part still resting on a
+980 MiB checkpoint round-trip — is now load-bearing rather than hypothetical.
+
+**Speed-ups exist but are deferred**, per the gate discipline: DDP (~1.9× vs
+DataParallel's ~1.5×, numerically safe here because the trained modules use
+InstanceNorm — see D22) and AMP fp16 on Turing tensor cores. Together they could
+plausibly land under 9h/run and remove chaining entirely. Neither is touched
+before M1 passes: a faster wrong baseline is worth nothing, and AMP around
+`grid_sample`/flow warping is a real numerics risk.
 
 ### LSA64 mount path (measured, not guessed)
 
