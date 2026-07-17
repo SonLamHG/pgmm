@@ -9,6 +9,12 @@ Not a correctness test: the data is noise and one epoch of it means nothing. It
 answers only "does the code path execute at all", which is exactly the question
 that was costing kernel cycles.
 
+**Blind spot — this runs single-device on CPU, so nothing that only breaks under
+DataParallel can be caught here.** One such fault has already slipped through: a
+`torch.inverse` lazy-init race that only fires when replicas run concurrently in
+threads (pytorch#90613, patched in run.py). A green run here means "the code is
+importable and the single-device path executes", not "it will train on Kaggle".
+
     python scripts/smoke_tpsmm_local.py
 
 Exits non-zero on failure. Run before pushing any change that touches the

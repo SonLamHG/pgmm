@@ -17,14 +17,35 @@ in this directory. New code lives in `pgmm/`.
 
 ## Patch log
 
-Both patches are compatibility-only: TPSMM is from 2021 and two of its
-dependencies made breaking changes since. Neither touches training numerics.
+All patches are compatibility-only. TPSMM is 2021 code on a 2026 stack; none of
+these touch training numerics.
 
-Verified together by running `run.py` end to end locally on CPU against a
-synthetic dataset — it trains, writes a checkpoint, and renders the keypoint
-visualisation (which is the `circle` code path). Do that before pushing to
-Kaggle: it catches this class of breakage in seconds instead of one 5–10 minute
-kernel cycle per error.
+`scripts/smoke_tpsmm_local.py` runs `run.py` end to end on CPU against a
+synthetic dataset — it trains, checkpoints, and renders the keypoint
+visualisation (the `circle` path). Run it before pushing: it catches this class
+of breakage in seconds rather than one 5–10 minute kernel cycle per error.
+
+**Its blind spot: it is single-device CPU, so it cannot reach anything that only
+breaks under DataParallel.** The `torch.inverse` race below got through it and
+cost a Kaggle cycle to find. Multi-GPU faults are only reachable on Kaggle.
+
+### 2026-07-17 — `run.py`: warm up `torch.linalg` before DataParallel
+
+**Numerics untouched.** `DenseMotionNetwork` calls `torch.inverse` inside
+`TPS.__init__` (`util.py:44`). PyTorch initialises its linalg backend lazily and
+that initialisation is **not thread-safe**; DataParallel runs replicas in
+threads, so they race and one dies with:
+
+```
+RuntimeError: lazy wrapper should be called at most once
+```
+
+Known upstream bug: <https://github.com/pytorch/pytorch/issues/90613>. The
+documented mitigation is to trigger the lazy init from the entrypoint before any
+threads start, so `run.py` now calls `torch.inverse(torch.eye(3))` once per
+device before `train()`. The result is discarded — it warms a loader.
+
+Single-GPU runs never hit this, which is why it survived the local smoke test.
 
 ### 2026-07-17 — `run.py`: `yaml.load` needs an explicit `Loader`
 

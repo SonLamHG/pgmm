@@ -80,6 +80,17 @@ if __name__ == "__main__":
     if not os.path.exists(os.path.join(log_dir, os.path.basename(opt.config))):
         copy(opt.config, log_dir)
 
+    # Force torch.linalg's lazy initialisation to happen here, on the main
+    # thread, before DataParallel spawns its per-replica worker threads.
+    # DenseMotionNetwork calls torch.inverse inside TPS.__init__ (util.py:44);
+    # that init is not thread-safe, so concurrent replicas race and one dies with
+    # "RuntimeError: lazy wrapper should be called at most once".
+    # See https://github.com/pytorch/pytorch/issues/90613
+    # The result is discarded -- this warms a lazy loader and changes no numerics.
+    if torch.cuda.is_available():
+        for _dev in opt.device_ids:
+            torch.inverse(torch.eye(3, device=torch.device('cuda:' + str(_dev))))
+
     if opt.mode == 'train':
         print("Training...")
         train(config, inpainting, kp_detector, bg_predictor, dense_motion_network, opt.checkpoint, log_dir, dataset)
