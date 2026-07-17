@@ -24,7 +24,9 @@ recorded here. A result that cannot be traced to a decision is not reportable.
 | D12 | Real step time / timeline unmeasured | **Measured: 1.07 s/step → 15.5h/run, 93h for 6 runs, 3.1 weeks of quota** | resolved |
 | D13 | LSA64 filename convention unverified | `NNN_NNN_NNN.mp4` = sign_signer_repetition — **confirmed** against the real archive | resolved |
 | D14 | Paper does not say whether LSA64 raw or cut is used | Use **cut** (`justinvo277/lsa64-dataset`); retry raw if M1 misses | decided |
-| D15 | Kaggle auth: legacy key can't push kernels; OAuth expires in 3h and does **not** auto-refresh | Long-lived API token in `~/.kaggle/access_token` | **open — needs a one-time user action** |
+| D15 | ~~Legacy key can't push kernels~~ — **WRONG: the key in use was simply stale** | Use the current key (`d:\Admin\kaggle.json`). Does everything, never expires. No OAuth needed. | corrected |
+| D22 | `enable_gpu: true` gives a P100, not the 2×T4 the plan assumes | `machine_shape: "NvidiaTeslaT4"` (= T4 ×2) | resolved |
+| D23 | TPSMM is 2021 code: three deps have broken it since | Three compat patches, numerics untouched (see `third_party/tpsmm/UPSTREAM.md`) | resolved |
 | D16 | A kernel has no Kaggle credentials, so it cannot push its own checkpoint | **Local orchestration** — the kernel never pushes; the workstation does | resolved |
 
 ## D1 — which 36 keypoints
@@ -542,3 +544,25 @@ Neither the LPIPS backbone nor the SSIM implementation is stated, and both shift
 the third decimal — the precision at which we are claiming a match. Pinned to
 `lpips(net='alex')` and `skimage.metrics.structural_similarity(data_range=1.0,
 channel_axis=-1)`. Revisit only if M1 misses by a small margin.
+
+## D23 — TPSMM is 2021 code on a 2026 stack
+
+Three dependencies broke it. None of the fixes touch numerics; all are recorded
+in `third_party/tpsmm/UPSTREAM.md`.
+
+| break | cause | caught by |
+|---|---|---|
+| `skimage.draw.circle` gone | removed in scikit-image 0.19, renamed `disk` | local smoke |
+| `yaml.load` missing `Loader` | PyYAML 6.0 made it mandatory | local smoke |
+| `torch.inverse` lazy-init race | not thread-safe; DataParallel runs replicas in threads ([pytorch#90613](https://github.com/pytorch/pytorch/issues/90613)) | **Kaggle only** |
+
+**Process lesson.** These were found one per Kaggle cycle — push, queue, run,
+fetch log — at 5–10 minutes each, when the first two are plain Python errors
+catchable locally in seconds. TPSMM being four years old should have prompted a
+single sweep for *all* stale APIs, not three separate incident responses.
+
+`scripts/smoke_tpsmm_local.py` now closes that loop: it runs TPSMM end to end on
+CPU against synthetic data before anything is pushed. **Its blind spot is
+multi-GPU** — the `torch.inverse` race only fires with concurrent replicas and
+sailed straight through it. Green locally means importable and
+single-device-executable, not trainable on Kaggle.
