@@ -1,6 +1,6 @@
 {
-  "id": "snlmhong/pgmm-train-tpsmm",
-  "title": "pgmm-train-tpsmm",
+  "id": "snlmhong/pgmm-train-s2",
+  "title": "pgmm-train-s2",
   "code_file": "train.ipynb",
   "language": "python",
   "kernel_type": "notebook",
@@ -11,6 +11,9 @@
   "enable_internet": true,
   "dataset_sources": [],
   "competition_sources": [],
-  "kernel_sources": ["snlmhong/pgmm-preprocess"],
+  "kernel_sources": [
+    "snlmhong/pgmm-preprocess",
+    "snlmhong/pgmm-train-s1"
+  ],
   "model_sources": []
 }

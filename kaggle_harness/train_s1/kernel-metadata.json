@@ -1,0 +1,18 @@
+{
+  "id": "snlmhong/pgmm-train-s1",
+  "title": "pgmm-train-s1",
+  "code_file": "train.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "machine_shape": "NvidiaTeslaT4",
+  "enable_tpu": false,
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": [
+    "snlmhong/pgmm-preprocess"
+  ],
+  "model_sources": []
+}
