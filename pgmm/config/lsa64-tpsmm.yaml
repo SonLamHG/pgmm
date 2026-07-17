@@ -1,0 +1,93 @@
+# TPSMM baseline on LSA64 -- the M1 gate (run R0).
+#
+# Derived from third_party/tpsmm/config/taichi-256.yaml. Every value is either
+# TPSMM's default (inherited verbatim, D7) or a change the paper explicitly
+# states. Changes are marked PAPER; Kaggle-driven operational changes are marked
+# KAGGLE and touch no numerics.
+#
+# Target (paper Table 1, LSA64):
+#   L1 0.01342 | SSIM 0.9208 | LPIPS 0.02261 | FVD 182.785 | TCD 0.130
+
+dataset_params:
+  # Points at the laid-out prepared dataset: root/train and root/test.
+  # NOT the flat prepare_dataset output -- FramesDataset silently falls back to
+  # its own random 80/20 split (2560/640) if train/ is missing, discarding D9
+  # and the paper's 2800/400 without an error. See pgmm/data/layout.py.
+  root_dir: /kaggle/input/datasets/snlmhong/lsa64-prepared-128/lsa64_prepared
+  frame_shape: [128, 128, 3]        # PAPER: 128x128 crop-and-resize
+  id_sampling: False                # LSA64 clips are not chunked; each is whole
+  augmentation_params:
+    flip_param:
+      horizontal_flip: True
+      time_flip: True
+    jitter_param:                   # TPSMM default on every config (D7)
+      brightness: 0.1
+      contrast: 0.1
+      saturation: 0.1
+      hue: 0.1
+
+model_params:
+  common_params:
+    num_tps: 20                     # PAPER: 20 TPS groups. KPDetector emits
+                                    # num_tps*5 points => 100 keypoints, exactly
+                                    # the paper's "100 keypoints in 20 groups".
+                                    # TPSMM's default is 10.
+    num_channels: 3
+    bg: True
+    multi_mask: True
+  generator_params:
+    block_expansion: 64
+    max_features: 512
+    num_down_blocks: 3              # D4: 128 -> 64 -> 32 -> 16 and back
+  dense_motion_params:
+    block_expansion: 64
+    max_features: 1024
+    num_blocks: 5
+    scale_factor: 0.25
+  avd_network_params:               # unused: AVD is not part of the paper
+    id_bottle_size: 128
+    pose_bottle_size: 128
+
+train_params:
+  num_epochs: 100                   # PAPER
+  num_repeats: 5                    # PAPER: "five pairs of source and driving
+                                    # images randomly selected per video".
+                                    # DatasetRepeater makes an epoch
+                                    # num_repeats * num_videos, and each item is
+                                    # exactly one (source, driving) pair -- so
+                                    # this maps precisely. TPSMM's defaults are
+                                    # 50-150; using those would be ~30x the
+                                    # compute for a claim the paper never made.
+  epoch_milestones: [60, 90]        # PAPER: lr/10 at 60 and 90.
+                                    # TPSMM's default is [70, 90].
+  lr_generator: 2.0e-4              # PAPER
+  batch_size: 28                    # TPSMM default; provisional until D12
+                                    # measures what fits two T4s at 128x128
+  scales: [1, 0.5, 0.25, 0.125]     # perceptual pyramid; at 128x128 this is
+                                    # 128/64/32/16
+  dataloader_workers: 4             # KAGGLE: ~4 cores (TPSMM default is 12)
+  checkpoint_freq: 5                # KAGGLE: TPSMM's default of 50 would only
+                                    # checkpoint at epochs 50 and 100 -- a
+                                    # session dying at epoch 49 would lose
+                                    # everything. Sessions always die here.
+  dropout_epoch: 35
+  dropout_maxp: 0.7
+  dropout_startp: 0.0
+  dropout_inc_epoch: 10
+  bg_start: 0
+  transform_params:
+    sigma_affine: 0.05
+    sigma_tps: 0.005
+    points_tps: 5
+  loss_weights:                     # D7: L_r inherited verbatim. The paper says
+                                    # only "the loss function in TPSMM"; these
+                                    # are those weights.
+    perceptual: [10, 10, 10, 10, 10]
+    equivariance_value: 10
+    warp_loss: 10
+    bg: 10
+
+visualizer_params:
+  kp_size: 5
+  draw_border: True
+  colormap: 'gist_rainbow'

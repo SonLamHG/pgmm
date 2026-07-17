@@ -11,7 +11,10 @@ recorded here. A result that cannot be traced to a decision is not reportable.
 | D4 | Generator block count | Follow TPSMM `num_down_blocks=3` | decided |
 | D5 | PFM attention may exceed 16GB | Memory-efficient SDPA; restrict scales if needed | open |
 | D6 | `L_pd`/`L_align` weights | Start 1.0, log magnitudes at M2 | decided |
-| D7 | `L_r` sub-loss weights | Inherited from vendored TPSMM | decided |
+| D7 | `L_r` sub-loss weights | Inherited verbatim: perceptual [10]x5, equivariance 10, warp 10, bg 10 | resolved |
+| D17 | TPSMM silently 80/20-splits when `train/` is absent, ignoring D9 | Materialise the split on disk (`pgmm/data/layout.py`) | resolved |
+| D18 | Paper's "five pairs per video" vs TPSMM's `num_repeats` 50–150 | `num_repeats: 5` — the semantics map exactly | resolved |
+| D19 | LSA64 signers wear fluorescent gloves; TPSMM defaults apply colour jitter | Keep jitter (D7 inheritance); revisit if M1 misses | decided |
 | D8 | FVD implementation sensitivity | Pin one I3D; report relative only | open |
 | D9 | LSA64 2800/400 split undefined | Seeded random default; signer-held-out alternative | open |
 | D10 | LPIPS backbone (alex vs vgg) undefined | `lpips` pkg, `net='alex'` | decided |
@@ -253,6 +256,59 @@ Note the local API returns **403** on this account's own private dataset
 `datasets version` writes to it. That 403 is an API-surface quirk and is
 **irrelevant to chaining**: kernels mount datasets rather than fetching them.
 Do not let it trigger a false alarm later.
+
+## D17 — TPSMM silently overrides our split
+
+`FramesDataset.__init__` checks for `root_dir/train`; finding none it does this:
+
+```python
+print("Use random train-test split.")
+train_videos, test_videos = train_test_split(self.videos, random_state=seed, test_size=0.2)
+```
+
+On LSA64 that is **2560/640**, not the paper's **2800/400** — and it discards D9
+entirely in favour of an undocumented partition. No exception, no warning: one
+line of stdout, and every number downstream is quietly measured against the
+wrong test set.
+
+`pgmm/data/split_clips` would have been dead code and nobody would have noticed.
+
+**Decision:** `pgmm/data/layout.py::materialise_split` writes the D9 split to
+disk as `train/` and `test/` before training sees it, and asserts the 2800/400
+counts. Caught by reading the vendored source rather than trusting the config.
+
+## D18 — "five pairs per video" == `num_repeats: 5`
+
+The paper: *"Five pairs of source and driving images randomly selected per
+video."* TPSMM's configs use `num_repeats` of 50–150. A 30x compute difference
+rides on the reading.
+
+The semantics settle it:
+
+- `DatasetRepeater.__len__` returns `num_repeats * len(dataset)` — the epoch is
+  the video list repeated `num_repeats` times.
+- `FramesDataset.__getitem__` does `frame_idx = np.sort(np.random.choice(num_frames, replace=True, size=2))`
+  — **exactly one (source, driving) pair per item.**
+
+So `num_repeats` *is* pairs-per-video-per-epoch, and the paper's sentence maps
+onto it precisely. **`num_repeats: 5`.**
+
+Consequence: an epoch is 2800 x 5 = 14,000 samples; at batch 28 that is 500
+steps/epoch and **50,000 steps** for the full 100 epochs. Far smaller than the
+spec's 8–12 week estimate assumed. D12 will measure whether that holds.
+
+## D19 — colour jitter vs LSA64's fluorescent gloves
+
+Every TPSMM config applies `jitter_param` (brightness/contrast/saturation/hue
+0.1). D7 says inherit TPSMM's defaults, so it stays on.
+
+But LSA64 is unusual: its signers **wear fluorescent-coloured gloves**,
+deliberately, to make the hands trivially separable. Hue and saturation jitter
+attacks exactly that signal. The paper says nothing either way.
+
+**Decision:** keep jitter, on D7 inheritance grounds. If M1 misses, this is a
+cheap thing to flip and worth trying early — but changing it without evidence
+would be tuning toward the paper's number, which this project does not do.
 
 ## D12 — measured costs (partial)
 
