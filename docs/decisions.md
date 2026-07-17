@@ -602,3 +602,19 @@ memory-efficient backend (Turing-compatible; flash-attn is not) never
 materialises the matrix, which is exactly what this limit is about. If that is
 still not enough, restrict PFM to lower scales and ablate the restriction.
 Settled at M2 with these per-sample figures, not the per-batch ones.
+
+## Operational note — a dead poller says nothing about the kernel
+
+Kernels run on Kaggle's infrastructure, wholly independent of the local session.
+The background pollers used here have died twice (session teardown, harness
+timeout) while the kernel carried on training normally.
+
+`FINAL: ...` in a poller's output is the only trustworthy signal from it. An
+empty output, a `killed` status, or a missing completion record mean **the
+poller stopped**, not the run. Always confirm with:
+
+    kaggle kernels status snlmhong/<slug>
+
+The failure mode this prevents is expensive: reading a stopped poller as a
+failed run, re-pushing, and burning a second allocation on work already in
+progress — while the original session keeps consuming quota in parallel.
