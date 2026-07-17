@@ -17,7 +17,8 @@ recorded here. A result that cannot be traced to a decision is not reportable.
 | D10 | LPIPS backbone (alex vs vgg) undefined | `lpips` pkg, `net='alex'` | decided |
 | D11 | SSIM implementation undefined | `skimage`, `data_range=1.0`, `channel_axis=-1` | decided |
 | D12 | Real step time / timeline unmeasured | Measure at M0, re-derive the estimate | open |
-| D13 | LSA64 filename convention unverified | `NNN_NNN_NNN.mp4` assumed from docs; verify against the real archive | **open — blocks M0** |
+| D13 | LSA64 filename convention unverified | `NNN_NNN_NNN.mp4` = sign_signer_repetition — **confirmed** against the real archive | resolved |
+| D14 | Paper does not say whether LSA64 raw or cut is used | Use **cut** (`justinvo277/lsa64-dataset`); retry raw if M1 misses | decided |
 
 ## D1 — which 36 keypoints
 
@@ -73,38 +74,55 @@ signer appear in both train and test, which is *easier* than a held-out split
 and would inflate all our numbers relative to the paper. If we come out better
 than the paper, suspect this before anything else.
 
-## D13 — LSA64 filename convention (unverified)
+## D13 — LSA64 filename convention (RESOLVED)
 
 `pgmm/data/lsa64_prepare.py` parses `NNN_NNN_NNN.mp4` as
-`<sign>_<signer>_<repetition>`. **This was taken from LSA64's documentation and
-has not been checked against the actual archive** — nobody has opened the
-download yet.
+`<sign>_<signer>_<repetition>`. Originally assumed from LSA64's documentation
+with nobody having opened the archive. **Confirmed** on 2026-07-17 against the
+real files, via `kaggle datasets files` — no download needed:
 
-Everything downstream leans on it: D9's split reads the signer field out of the
-filename, so a wrong convention would silently produce a split that is not the
-one we documented.
-
-**To verify once LSA64 is downloaded:**
-
-```bash
-ls <lsa64_dir> | head -5      # expect 001_001_001.mp4 style
-ls <lsa64_dir> | wc -l        # expect 3200
-
-python -c "
-from pathlib import Path
-from pgmm.data.lsa64_prepare import parse_lsa64_filename
-names = sorted(p.name for p in Path('<lsa64_dir>').glob('*.mp4'))
-print(len(names))
-signs, signers, reps = zip(*(parse_lsa64_filename(n) for n in names))
-print('signs', min(signs), max(signs))       # expect 1 64
-print('signers', min(signers), max(signers)) # expect 1 10
-print('reps', min(reps), max(reps))          # expect 1 5
-"
+```
+lsa64_dataset/LSA64/001/001_001_001.mp4
+lsa64_dataset/LSA64/001/001_001_002.mp4
+...
+lsa64_dataset/LSA64/001/001_001_005.mp4
+lsa64_dataset/LSA64/001/001_002_001.mp4
 ```
 
-If the convention differs, fix `_NAME_RE` **and the test together**. Do not make
-the test pass by loosening the assertion — the assertion is the only thing
-standing between us and a mislabelled split.
+Two independent confirmations in that listing:
+
+1. The **third** field cycles 1→5 and then the second increments — matching the
+   5 repetitions per (sign, signer). So field 3 = repetition.
+2. `justinvo277` groups files into directories named by the **first** field
+   (`001/`), and LSA64 has 64 signs. So field 1 = sign, leaving field 2 =
+   signer (10 values).
+
+This matters because D9's split reads the signer field out of the filename; a
+wrong convention would have produced a split that was not the one we documented,
+silently.
+
+**Still to confirm on first use:** that the archive holds exactly 3200 clips and
+that the field ranges are 1–64 / 1–10 / 1–5. Cheap to assert in the preprocessing
+run; `prepare_dataset` already fails fast on any name that does not parse.
+
+## D14 — LSA64 raw vs cut
+
+The paper says "LSA64" and gives 3200 videos, but never says which distribution.
+Both exist and differ: raw (1.9GB) keeps the idle frames before and after each
+sign; cut (1.5GB) is temporally segmented to the sign itself.
+
+**Decision: cut**, via `justinvo277/lsa64-dataset` (1,505,037,238 bytes, matching
+the official cut size).
+
+Reasoning: idle frames are nearly static, and static frames make both L1 and TCD
+look good for free — a model that does nothing scores well on them. The cut
+version removes that inflation, so it is the more honest choice and the harder
+target. If M1 misses, `mathineni/lsa64dataset` (1,899,638,618 bytes ≈ official
+raw) is the alternative to try, and the direction of the miss is diagnostic: if
+our numbers come out *better* than the paper's, idle frames are a prime suspect.
+
+Both are third-party re-uploads rather than the authors' own distribution. Sizes
+match the official figures, which is reassuring but not proof of bit-identity.
 
 ## D10 / D11 — metric implementations
 
