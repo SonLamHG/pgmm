@@ -24,7 +24,7 @@ recorded here. A result that cannot be traced to a decision is not reportable.
 | D12 | Real step time / timeline unmeasured | Measure at M0, re-derive the estimate | open |
 | D13 | LSA64 filename convention unverified | `NNN_NNN_NNN.mp4` = sign_signer_repetition — **confirmed** against the real archive | resolved |
 | D14 | Paper does not say whether LSA64 raw or cut is used | Use **cut** (`justinvo277/lsa64-dataset`); retry raw if M1 misses | decided |
-| D15 | Kaggle legacy API key shadows OAuth and cannot push kernels | Disable `~/.kaggle/kaggle.json` so the CLI resolves to OAuth | decided |
+| D15 | Kaggle auth: legacy key can't push kernels; OAuth expires in 3h and does **not** auto-refresh | Long-lived API token in `~/.kaggle/access_token` | **open — needs a one-time user action** |
 | D16 | A kernel has no Kaggle credentials, so it cannot push its own checkpoint | **Local orchestration** — the kernel never pushes; the workstation does | resolved |
 
 ## D1 — which 36 keypoints
@@ -141,36 +141,108 @@ our numbers come out *better* than the paper's, idle frames are a prime suspect.
 Both are third-party re-uploads rather than the authors' own distribution. Sizes
 match the official figures, which is reassuring but not proof of bit-identity.
 
-## D15 — Kaggle auth: legacy key vs OAuth
+## D15 — Kaggle auth (CORRECTED: the original conclusion was wrong)
 
-Kaggle now has two auth schemes, and the CLI silently prefers the worse one.
+**Resolution: use the current legacy key. `d:\Admin\kaggle.json` → `~/.kaggle/kaggle.json`.**
+It does everything, including `kernels push`, and never expires. No OAuth.
 
-| `~/.kaggle/kaggle.json` present | `auth_method` | `datasets list/files` | `kernels push` |
+### What this entry originally claimed, and why it was wrong
+
+It claimed *"the legacy key is not a fallback; it is an override that disables
+kernel operations entirely"* — a table asserting `kernels push` **fails** under
+`LEGACY_API_KEY` and works only under OAuth. An OAuth login was requested from
+the user on that basis, and the ~3h token expiry was then treated as an
+unavoidable cost to be worked around.
+
+There is no such rule. Measured 2026-07-17 with the **current** key:
+
+```
+kernels push under legacy -> Kernel version 2 successfully pushed.
+kernels status            -> OK
+kernels output            -> OK
+kernels list --mine       -> OK
+datasets list --mine      -> OK
+```
+
+The real cause: **the account has two legacy keys and the stale one was in use.**
+
+| file | dated | state |
+|---|---|---|
+| `~/.kaggle/kaggle.json` (original) | 2026-06-09 | superseded → partially rejected |
+| `d:\Admin\kaggle.json` | 2026-07-14 | **current → works for everything** |
+
+Generating a new Kaggle API token invalidates the previous one. The 06-09 key
+had been superseded by the 07-14 key, so its failures were an **invalid
+credential**, not a capability boundary. Its error message even said so
+plainly — *"Authentication required… generate an API token"* — and was read as
+a statement about legacy keys as a class rather than about that key.
+
+The user pointed at `d:\Admin\kaggle.json` directly. It was inspected, noted to
+carry a **different** key for the same account, and then not tried. One command
+would have collapsed the whole detour.
+
+### The rule that actually holds
+
+| scheme | dataset ops | kernel ops | lifetime |
 |---|---|---|---|
-| yes | `LEGACY_API_KEY` | works | **fails** |
-| no (OAuth only) | `OAUTH` | works | works |
+| legacy key, **current** | works | works | permanent |
+| legacy key, superseded | partial | fails | dead |
+| OAuth (`kaggle auth login`) | works | works | **~3h, no auto-refresh** |
 
-With the legacy key present, `kernels push` fails demanding a `KAGGLE_API_TOKEN`
-— even though `kaggle auth login` has already cached a valid OAuth token in
-`~/.kaggle/credentials.json`. The legacy key is not a fallback; it is an
-override that disables kernel operations entirely.
+OAuth is strictly worse here: same capability, but it expires mid-project.
+`~/.kaggle/kaggle.json.legacy-disabled` (the 06-09 key) can be deleted.
 
-**Decision:** `~/.kaggle/kaggle.json` renamed to `kaggle.json.legacy-disabled`
-(2026-07-17). Reversible by renaming back. A session backup also sits at
-`/tmp/kaggle.json.session-backup`, and the user keeps a separate legacy key at
-`d:\Admin\kaggle.json` — note that one carries a **different** key for the same
-account (`snlmhong`), so it is not a copy of the disabled file.
+**OAuth's expiry is still worth recording**, since it was measured: the token
+expired at 09:44:20 and `datasets list --mine` at 09:46:25 neither refreshed it
+nor errored — it returned *"No datasets found"* while `pgmm-ckpt` demonstrably
+existed. **Silent degradation, not failure.** Had the project stayed on OAuth,
+an expired token mid-orchestration would have looked like an empty result rather
+than an error.
 
-**Why not just set `KAGGLE_API_TOKEN` from credentials.json?** That works, and
-was used for the first push, but it bypasses the refresh flow: the access token
-expires in ~3 hours. For a project measured in weeks, and for training runs that
-must survive unattended across session boundaries, an auth that dies mid-run is
-not viable. Native OAuth refreshes itself.
+## D22 — `enable_gpu: true` gives a P100, not 2×T4
 
-**Consequence to watch:** `datasets create` / `datasets version` are the
-mechanism behind checkpoint chaining. They must be confirmed to work under OAuth
-before any long training run is started — an auth failure at the *end* of a 9h
-session would lose the whole session's work.
+`enable_gpu` is a boolean: it requests *a* GPU and Kaggle picks the default,
+which is a single P100. The plan assumes 2×T4 throughout — the quota arithmetic,
+the DataParallel setup, the batch size.
+
+The accelerator is selected by **`machine_shape`** in `kernel-metadata.json`.
+Per the SDK's own docstring, the supported values are:
+
+```
+* NvidiaTeslaT4
+* NvidiaTeslaP100
+* Tpu1VmV38
+```
+
+On Kaggle, `NvidiaTeslaT4` means **T4 ×2** — there is no single-T4 option.
+
+**Decision:** `"machine_shape": "NvidiaTeslaT4"` in the training kernel's
+metadata. Caught only because the user noticed the running kernel was on a P100;
+nothing in the plan or the metadata schema would have surfaced it, and the
+`assert n == 2` in the notebook fires *after* the session has already been
+allocated — it prevents a wrong measurement, not a wasted allocation.
+
+### Using both T4s
+
+No code change needed. `train.py:48` calls `torch.nn.DataParallel(generator_full)`
+**with no `device_ids`**, so it takes every visible GPU; `--device_ids` only picks
+the primary. `batch_size: 28` splits 14/14.
+
+Expect ~1.5×, not 2×: DataParallel is single-process (GIL), re-replicates the
+model to both GPUs every step, scatters/gathers over PCIe (Kaggle's T4s have no
+NVLink), and leaves GPU 0 carrying the loss reduction.
+
+**DDP would give ~1.9× and is numerically safe here**, which is unusual and worth
+recording: the trained modules use `InstanceNorm2d` (`modules/util.py`), not
+BatchNorm — `BatchNorm1d` appears only in `avd_network`, which this project does
+not use. InstanceNorm normalises per sample, so there are no cross-batch
+statistics for DDP's different batch partitioning to perturb. The usual reason
+DDP-vs-DataParallel changes results does not apply.
+
+Not doing it yet regardless. Measure first (D12): if a run is 5–10h, 1.5× is
+already enough, and hours spent on DDP or AMP are hours taken from reaching the
+M1 gate. AMP additionally carries real risk around `grid_sample`/flow warping and
+stays deferred until M1 passes.
 
 ## D16 — how does a kernel push its own checkpoint back?
 

@@ -4,7 +4,18 @@ import torch.nn.functional as F
 import imageio
 
 import os
-from skimage.draw import circle
+try:
+    from skimage.draw import circle
+except ImportError:
+    # scikit-image >= 0.19 removed draw.circle in favour of draw.disk. TPSMM
+    # predates that; Kaggle ships 0.26. Shimmed rather than rewriting the call
+    # site, so the vendored code stays as close to upstream as possible.
+    # Visualisation only -- this draws keypoint markers on debug images and
+    # touches no training numerics.
+    from skimage.draw import disk as _disk
+
+    def circle(r, c, radius, shape=None):
+        return _disk((r, c), radius, shape=shape)
 
 import matplotlib.pyplot as plt
 import collections
