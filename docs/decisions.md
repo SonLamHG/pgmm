@@ -20,7 +20,7 @@ recorded here. A result that cannot be traced to a decision is not reportable.
 | D13 | LSA64 filename convention unverified | `NNN_NNN_NNN.mp4` = sign_signer_repetition — **confirmed** against the real archive | resolved |
 | D14 | Paper does not say whether LSA64 raw or cut is used | Use **cut** (`justinvo277/lsa64-dataset`); retry raw if M1 misses | decided |
 | D15 | Kaggle legacy API key shadows OAuth and cannot push kernels | Disable `~/.kaggle/kaggle.json` so the CLI resolves to OAuth | decided |
-| D16 | A kernel has no Kaggle credentials, so it cannot push its own checkpoint | Unresolved — Secret with a legacy key, or kernel-output chaining | **open — blocks any long run** |
+| D16 | A kernel has no Kaggle credentials, so it cannot push its own checkpoint | **Local orchestration** — the kernel never pushes; the workstation does | resolved |
 
 ## D1 — which 36 keypoints
 
@@ -189,36 +189,54 @@ KAGGLE_KEY set     : False
 ~/.kaggle exists   : False
 ```
 
-**Chosen: Kaggle Secret holding a legacy API key.** Rationale: legacy keys work
-for dataset operations (`datasets list`/`files` both succeeded under legacy) and
-fail only for *kernel* operations (D15). `datasets version` is a dataset
-operation, so a legacy key should suffice. The account already has two legacy
-keys (`d:\Admin\kaggle.json`, and the disabled `~/.kaggle/kaggle.json.legacy-disabled`).
+### Kaggle Secrets: tried, does not work for an API-driven workflow
 
-**Two things still unverified, both cheap to test and both fatal if wrong:**
+The first choice was a Kaggle Secret holding a legacy API key. It fails:
 
-1. The `kaggle` PyPI package contains no reference to secrets at all — the API
-   cannot attach them. Secrets are UI-only. So whether a UI-attached secret
-   *survives an API kernel push* is unknown, and the whole workflow is
-   API-driven.
-2. Whether a legacy key actually authorises `datasets version` from inside a
-   kernel. Plausible, untested.
+```
+(a) SECRET NOT READABLE: ConnectionError Connection error trying to communicate with service.
+```
 
-Fallbacks if the secret route fails:
+Twice — chainprobe v2 and v3 — with the secret **visibly attached** in the
+notebook editor (screenshot confirms a ticked `KAGGLE_KEY` on a version-2
+notebook).
 
-- **Private dataset holding the key.** Proven to mount (chainprobe read a
-  private dataset successfully). Needs no UI step. Weaker than a Secret: the key
-  sits as a plain file rather than encrypted at rest.
-- **Local orchestration.** Drive the loop from the workstation: push kernel →
-  fetch its output → push checkpoint to the dataset → push next kernel. Needs no
-  kernel credentials at all, since `kernels output` and `datasets version` both
-  work locally under OAuth. Cost: every checkpoint round-trips through the
-  user's connection. A TPSMM checkpoint is estimated at 500MB–1GB (weights plus
-  two Adam moments) — unmeasured — so ~10 sessions means 10–20GB of traffic.
+Reading of the evidence: the tick in the editor's Secrets panel describes the
+**draft**. A version created by `kaggle kernels push` is a separate entity and
+does not inherit that binding. Consistent with the `kaggle` PyPI package
+containing no reference to secrets anywhere — the API has no way to express the
+attachment, so an API-pushed version has none.
 
-**Must be settled before any long training run.** An auth failure at the *end*
-of a 9h session loses the entire session — the most expensive possible place to
-discover this.
+Not worth further debugging: two failed probes already cost more than the
+alternative, and the alternative uses only operations already proven to work.
+
+### Chosen: local orchestration
+
+The kernel never authenticates. The workstation drives the loop:
+
+1. push the training kernel (API, OAuth) — proven
+2. kernel trains, writes its checkpoint to `/kaggle/working` — no credentials needed
+3. fetch the kernel's output locally (`kernels output`) — proven
+4. push the checkpoint as a dataset version (`datasets version`) — proven
+5. push the next kernel; it attaches the dataset and resumes — proven (chainprobe)
+
+Every step is a verified-working operation. Nothing depends on a UI action that
+an API push can silently drop.
+
+**Cost:** each checkpoint round-trips through the workstation's connection. A
+TPSMM checkpoint is estimated at 500MB–1GB (weights plus two Adam moments) —
+**unmeasured**; measure it at the first real checkpoint and record it here. At
+~10 sessions that is roughly 10–20GB of traffic. Preprocessing round-trips once
+(~1–2GB) and then never again.
+
+**Consequence for `kaggle_harness/chain.py`:** `push_checkpoint` now runs on the
+workstation, not in the kernel. Its env-var requirement is satisfied by OAuth
+locally. The kernel side only needs `latest_checkpoint`, which is proven against
+the real mount path.
+
+**Rejected: private dataset holding the key.** It would save the bandwidth, but
+it puts a live credential in a plain file to do so. Not worth it — especially
+after this account's key already leaked into a chat transcript once.
 
 ### Verified working (chainprobe, 2026-07-17)
 
