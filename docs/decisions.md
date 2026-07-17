@@ -9,7 +9,7 @@ recorded here. A result that cannot be traced to a decision is not reportable.
 | D2 | `L_pd` argmax is non-differentiable | Use soft-argmax | decided |
 | D3 | TCD value range / channel reduction for `T=0.5` | Calibrate against TPSMM=0.130 at M1 | open |
 | D4 | Generator block count | Follow TPSMM `num_down_blocks=3` | decided |
-| D5 | PFM attention may exceed 16GB | Memory-efficient SDPA; restrict scales if needed | open |
+| D5 | PFM attention exceeds a T4 **per sample**, not just per batch | Memory-efficient SDPA; restrict scales if needed | open |
 | D6 | `L_pd`/`L_align` weights | Start 1.0, log magnitudes at M2 | decided |
 | D7 | `L_r` sub-loss weights | Inherited verbatim: perceptual [10]x5, equivariance 10, warp 10, bg 10 | resolved |
 | D17 | TPSMM silently 80/20-splits when `train/` is absent, ignoring D9 | Materialise the split on disk (`pgmm/data/layout.py`) | resolved |
@@ -566,3 +566,39 @@ CPU against synthetic data before anything is pushed. **Its blind spot is
 multi-GPU** — the `torch.inverse` race only fires with concurrent replicas and
 sailed straight through it. Green locally means importable and
 single-device-executable, not trainable on Kaggle.
+
+## D5 — PFM attention memory (arithmetic corrected)
+
+PFM is global cross-attention, cost O((H·W)²). The spec sized this per *batch*
+and concluded "batch 16 at 128×128 needs ~17GB > 16GB". That framing was wrong
+in both directions and the corrected version is what matters.
+
+**2×T4 is not 32GB.** Measured: `[0] Tesla T4 14.6 GiB`, `[1] Tesla T4 14.6 GiB`
+— two separate pools. DataParallel replicates the model onto each GPU and splits
+the batch; it never pools memory. Model size stays capped by *one* GPU. (T4 has
+no NVLink at all — it is a single-slot 70W PCIe card — and NVLink would only
+speed the interconnect anyway, not merge address spaces. Pooling for one model
+needs model parallelism / FSDP / ZeRO, none of which TPSMM has.)
+
+So the batch *is* split — 14 per GPU, not 28 — which the spec's arithmetic
+ignored. But the right unit is **per sample**:
+
+| scale | tokens | attention matrix, **one sample**, fp32 |
+|---|---|---|
+| 32×32 | 1,024 | 4 MB |
+| 64×64 | 4,096 | 67 MB |
+| 128×128 | 16,384 | **1.07 GB** |
+
+At 128×128 a **single sample** costs 1.07 GB for **one** layer's attention
+matrix, forward only. Batch 14 per T4 → ~15 GB, over the 14.6 GiB budget before
+any backward storage.
+
+**The conclusion holds, for a better reason:** full-resolution PFM does not fit a
+T4, and having two changes nothing, because the constraint is per sample rather
+than per batch. Halving the batch cannot fix a per-sample cost.
+
+**Resolution unchanged:** `F.scaled_dot_product_attention` with the
+memory-efficient backend (Turing-compatible; flash-attn is not) never
+materialises the matrix, which is exactly what this limit is about. If that is
+still not enough, restrict PFM to lower scales and ablate the restriction.
+Settled at M2 with these per-sample figures, not the per-batch ones.
