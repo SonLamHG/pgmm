@@ -71,3 +71,38 @@ def test_prepare_dataset_indexes_all_clips(tmp_path):
     index = prepare_dataset(src, tmp_path / "prepared", size=128)
     assert set(index) == {"001_001_001", "002_003_004"}
     assert all(v == 4 for v in index.values())
+
+
+def test_prepare_dataset_finds_clips_nested_in_per_sign_dirs(tmp_path):
+    """The distribution we actually use (justinvo277/lsa64-dataset, D14) nests
+    clips under a directory per sign rather than one flat folder. Both layouts
+    exist in the wild, so the loader handles both."""
+    src = tmp_path / "raw"
+    (src / "001").mkdir(parents=True)
+    (src / "002").mkdir(parents=True)
+    _write_video(src / "001" / "001_001_001.mp4", n_frames=4)
+    _write_video(src / "002" / "002_003_004.mp4", n_frames=4)
+
+    index = prepare_dataset(src, tmp_path / "prepared", size=128)
+    assert set(index) == {"001_001_001", "002_003_004"}
+    assert (tmp_path / "prepared" / "001_001_001" / "frame_00000.jpg").exists()
+
+
+def test_prepare_dataset_flattens_output_regardless_of_input_nesting(tmp_path):
+    """Output is keyed by clip id alone, so the split (D9) and loader never
+    need to know how the source happened to be arranged."""
+    src = tmp_path / "raw"
+    (src / "deep" / "nested").mkdir(parents=True)
+    _write_video(src / "deep" / "nested" / "007_002_003.mp4", n_frames=3)
+
+    prepare_dataset(src, tmp_path / "prepared", size=128)
+    assert (tmp_path / "prepared" / "007_002_003").is_dir()
+
+
+def test_prepare_dataset_rejects_a_non_lsa64_name(tmp_path):
+    src = tmp_path / "raw"
+    src.mkdir()
+    _write_video(src / "001_001_001.mp4", n_frames=2)
+    _write_video(src / "random_clip.mp4", n_frames=2)
+    with pytest.raises(ValueError, match="LSA64 filename"):
+        prepare_dataset(src, tmp_path / "prepared", size=128)

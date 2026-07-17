@@ -1,0 +1,15 @@
+{
+  "id": "snlmhong/pgmm-preprocess",
+  "title": "pgmm-preprocess",
+  "code_file": "preprocess.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "dataset_sources": ["justinvo277/lsa64-dataset"],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}

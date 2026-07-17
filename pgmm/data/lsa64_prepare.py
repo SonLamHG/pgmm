@@ -70,11 +70,17 @@ def prepare_video(src: Path, dst_dir: Path, size: int = 128) -> int:
 
 
 def prepare_dataset(src_dir: Path, dst_dir: Path, size: int = 128) -> dict[str, int]:
-    """Prepare every LSA64 clip under ``src_dir``; write ``index.json``."""
+    """Prepare every LSA64 clip under ``src_dir``; write ``index.json``.
+
+    Recurses: LSA64 ships both as one flat directory of clips and as clips
+    nested under a directory per sign, and the distribution we use (D14) is the
+    nested one. Output is always flat and keyed by clip id, so neither the split
+    (D9) nor the loader needs to know how the source was arranged.
+    """
     src_dir, dst_dir = Path(src_dir), Path(dst_dir)
     dst_dir.mkdir(parents=True, exist_ok=True)
     index: dict[str, int] = {}
-    for video in sorted(src_dir.glob("*.mp4")):
+    for video in sorted(src_dir.rglob("*.mp4")):
         parse_lsa64_filename(video.name)  # fail fast on unexpected names
         clip_id = video.stem
         index[clip_id] = prepare_video(video, dst_dir / clip_id, size=size)
